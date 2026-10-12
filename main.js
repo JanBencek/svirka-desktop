@@ -57,7 +57,7 @@ function open() {
     },
     // thickFrame off: otherwise the frameless window keeps the Windows caption and resize-frame styles, which Windows 10
     // paints as a grey border once the window has a shape. Edge resizing still works (Electron's own resize borders).
-    ...(ROUND && { frame: false, thickFrame: false }),
+    ...(ROUND && { frame: false, thickFrame: process.env.SVIRKA_THICK === '1' }),
   })
   if (ROUND) {
     win.webContents.on('preload-error', (_e, _p, err) => console.error('preload', err))
