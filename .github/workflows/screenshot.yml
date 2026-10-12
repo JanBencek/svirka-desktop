@@ -1,7 +1,7 @@
 name: Windows screenshot
 
-# Manual check of the window on real Windows (Server 2022 = no rounded corners, like Windows 10): start the app,
-# screenshot the desktop, keep the PNGs as the run's artifact.
+# Manual check of the window on real Windows, in the Windows 10 look (SVIRKA_ROUND=1: the runner's Windows rounds
+# corners itself): start the app, screenshot the desktop, keep the PNGs as the run's artifact.
 on: workflow_dispatch
 
 jobs:
@@ -14,6 +14,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: node node_modules/electron/install.js  # the binary isn't always fetched by npm ci
       - name: Start Svirka and take screenshots
         shell: pwsh
         run: |
@@ -27,6 +28,7 @@ jobs:
             $bmp.Save("$PWD\$name.png")
           }
           [System.Environment]::OSVersion.Version
+          $env:SVIRKA_ROUND = "1"
           Start-Process -FilePath "node_modules\electron\dist\electron.exe" -ArgumentList "."
           Start-Sleep -Seconds 25
           Shot "window"
