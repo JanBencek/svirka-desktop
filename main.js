@@ -60,7 +60,9 @@ function open() {
   })
   if (ROUND) {
     win.webContents.on('preload-error', (_e, _p, err) => console.error('preload', err))
-    for (const e of ['resize', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen']) win.on(e, shape)
+    // again once shown: Windows drops a shape set before the window first appears
+    for (const e of ['show', 'resize', 'maximize', 'unmaximize', 'restore', 'enter-full-screen', 'leave-full-screen']) win.on(e, shape)
+    win.webContents.on('did-finish-load', shape)
     shape()
     const sendMax = () => win.webContents.send('svirka-maximized', win.isMaximized())
     win.on('maximize', sendMax)
