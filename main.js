@@ -40,6 +40,7 @@ function shape() {
     rects.push({ x: inset, y: i, width: w - 2 * inset, height: 1 }, { x: inset, y: h - 1 - i, width: w - 2 * inset, height: 1 })
   }
   win.setShape(rects)
+  if (process.env.SVIRKA_ROUND) console.log('shape', w, h, rects.length, JSON.stringify(rects.slice(1, 4)))
 }
 
 let win, tray
