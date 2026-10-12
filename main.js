@@ -22,26 +22,11 @@ let settings = { closeToTray: true, trayHintShown: false }
 try { settings = { ...settings, ...JSON.parse(fs.readFileSync(settingsFile, 'utf8')) } } catch {}
 const save = () => fs.writeFileSync(settingsFile, JSON.stringify(settings))
 
-// Windows 10 never rounds window corners (11 does it itself). There the window has no Windows frame at all (a frame
-// left in place paints a grey border once the window is cut to a shape), preload.js draws a title strip with
-// Windows-style buttons, and the window is cut to rounded corners. Elsewhere: the normal window.
+// Windows 10 never rounds window corners (11 does it itself). Cutting a framed window to a shape doesn't work there
+// (with Windows' resize frame kept it paints a grey border, without it the shape is ignored), so the window is
+// transparent instead: preload.js rounds the page's own corners, draws the title strip with Windows-style buttons and
+// adds resize edges (Windows can't resize a transparent window itself). Elsewhere: the normal window.
 const ROUND = (process.platform === 'win32' && Number(os.release().split('.')[2]) < 22000) || process.env.SVIRKA_ROUND === '1'  // env: to test elsewhere
-const RADIUS = 10
-
-// The window's outline: full rows in the middle, rows inset along a circle at the four corners (Windows draws no
-// anti-aliasing here, so a 10 px radius keeps the steps small). Square when maximised, like every Windows window.
-function shape() {
-  const [w, h] = win.getSize()
-  if (win.isMaximized() || win.isFullScreen()) return win.setShape([{ x: 0, y: 0, width: w, height: h }])
-  const rects = [{ x: 0, y: RADIUS, width: w, height: h - 2 * RADIUS }]
-  for (let i = 0; i < RADIUS; i++) {
-    const dy = RADIUS - i - 0.5
-    const inset = Math.round(RADIUS - Math.sqrt(RADIUS * RADIUS - dy * dy))
-    rects.push({ x: inset, y: i, width: w - 2 * inset, height: 1 }, { x: inset, y: h - 1 - i, width: w - 2 * inset, height: 1 })
-  }
-  win.setShape(rects)
-  if (process.env.SVIRKA_ROUND) console.log('shape', w, h, rects.length, JSON.stringify(rects.slice(1, 4)))
-}
 
 let win, tray
 let quitting = false
@@ -50,21 +35,16 @@ function open() {
   win = new BrowserWindow({
     width: Math.min(1280, area.width - 80), height: Math.min(820, area.height - 60), minWidth: 400, minHeight: 520,
     title: 'Svirka', icon: path.join(__dirname, 'build', 'icon.png'),
-    backgroundColor: '#0a0a0a', autoHideMenuBar: true,
+    autoHideMenuBar: true,
+    backgroundColor: '#0a0a0a',
     webPreferences: {
       backgroundThrottling: false,  // keep the queue moving while minimised
       ...(ROUND && { preload: path.join(__dirname, 'preload.js'), additionalArguments: ['--svirka-titlebar'] }),
     },
-    // thickFrame off: otherwise the frameless window keeps the Windows caption and resize-frame styles, which Windows 10
-    // paints as a grey border once the window has a shape. Edge resizing still works (Electron's own resize borders).
-    ...(ROUND && { frame: false, thickFrame: process.env.SVIRKA_THICK === '1' }),
+    ...(ROUND && { frame: false, transparent: true, backgroundColor: '#00000000', resizable: false }),
   })
   if (ROUND) {
     win.webContents.on('preload-error', (_e, _p, err) => console.error('preload', err))
-    // again once shown: Windows drops a shape set before the window first appears
-    for (const e of ['show', 'resize', 'maximize', 'unmaximize', 'restore', 'enter-full-screen', 'leave-full-screen']) win.on(e, shape)
-    win.webContents.on('did-finish-load', shape)
-    shape()
     const sendMax = () => win.webContents.send('svirka-maximized', win.isMaximized())
     win.on('maximize', sendMax)
     win.on('unmaximize', sendMax)
@@ -129,6 +109,25 @@ ipcMain.on('svirka-window', (_e, action) => {
   if (action === 'minimize') win.minimize()
   else if (action === 'maximize') win.isMaximized() ? win.unmaximize() : win.maximize()
   else if (action === 'close') win.close()
+})
+
+// Resizing from preload.js's edges: from pointer down (edge = 'n', 'se', …) until pointer up (edge = null), the
+// window follows the cursor.
+let resizeTimer
+ipcMain.on('svirka-resize', (_e, edge) => {
+  clearInterval(resizeTimer)
+  if (!edge || win.isMaximized()) return
+  const start = win.getBounds(), from = screen.getCursorScreenPoint()
+  const [minW, minH] = win.getMinimumSize()
+  resizeTimer = setInterval(() => {
+    const p = screen.getCursorScreenPoint(), dx = p.x - from.x, dy = p.y - from.y
+    let { x, y, width, height } = start
+    if (edge.includes('e')) width = Math.max(minW, start.width + dx)
+    if (edge.includes('s')) height = Math.max(minH, start.height + dy)
+    if (edge.includes('w')) { width = Math.max(minW, start.width - dx); x = start.x + start.width - width }
+    if (edge.includes('n')) { height = Math.max(minH, start.height - dy); y = start.y + start.height - height }
+    win.setBounds({ x, y, width, height })
+  }, 16)
 })
 
 app.on('second-instance', () => win && show())  // starting Svirka again brings the hidden window back

@@ -29,7 +29,6 @@ jobs:
           }
           [System.Environment]::OSVersion.Version
           $env:SVIRKA_ROUND = "1"
-          $env:SVIRKA_THICK = "1"
           Start-Process -FilePath "node_modules\electron\dist\electron.exe" -ArgumentList "." -RedirectStandardOutput out.txt -RedirectStandardError err.txt
           Start-Sleep -Seconds 25
           Shot "window"
