@@ -1,0 +1,36 @@
+name: Windows screenshot
+
+# Manual check of the window on real Windows (Server 2022 = no rounded corners, like Windows 10): start the app,
+# screenshot the desktop, keep the PNGs as the run's artifact.
+on: workflow_dispatch
+
+jobs:
+  screenshot:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Start Svirka and take screenshots
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          function Shot($name) {
+            $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            $g.Clear([System.Drawing.Color]::FromArgb(208, 48, 48))
+            $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+            $bmp.Save("$PWD\$name.png")
+          }
+          [System.Environment]::OSVersion.Version
+          Start-Process -FilePath "node_modules\electron\dist\electron.exe" -ArgumentList "."
+          Start-Sleep -Seconds 25
+          Shot "window"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: screenshots
+          path: "*.png"

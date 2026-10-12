@@ -53,7 +53,9 @@ function open() {
       backgroundThrottling: false,  // keep the queue moving while minimised
       ...(ROUND && { preload: path.join(__dirname, 'preload.js'), additionalArguments: ['--svirka-titlebar'] }),
     },
-    ...(ROUND && { frame: false }),
+    // thickFrame off: otherwise the frameless window keeps the Windows caption and resize-frame styles, which Windows 10
+    // paints as a grey border once the window has a shape. Edge resizing still works (Electron's own resize borders).
+    ...(ROUND && { frame: false, thickFrame: false }),
   })
   if (ROUND) {
     win.webContents.on('preload-error', (_e, _p, err) => console.error('preload', err))
@@ -103,7 +105,7 @@ const media = (action) => win.webContents.executeJavaScript(`window.dispatchEven
 
 function makeTray() {
   tray = new Tray(nativeImage.createFromPath(path.join(__dirname, 'build', 'icon.png')).resize({ width: 32, height: 32 }))
-  tray.setToolTip('Svirka')
+  tray.setToolTip(`Svirka ${app.getVersion()}`)
   const menu = () => Menu.buildFromTemplate([
     { label: 'Show Svirka', click: show },
     { type: 'separator' },
