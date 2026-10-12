@@ -1,7 +1,7 @@
 // Svirka for the desktop: the Svirka web app (music.bencit.com) in its own window. Everything Svirka does lives
 // there, so the app never needs an update for a new feature. What the window adds: the login is kept, the media keys
 // and the OS media overlay work (Svirka sets navigator.mediaSession), and Svirka Connect lists it as "Svirka Desktop".
-const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell } = require('electron')
+const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, screen, shell } = require('electron')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
@@ -45,8 +45,9 @@ function shape() {
 let win, tray
 let quitting = false
 function open() {
+  const area = screen.getPrimaryDisplay().workAreaSize  // never open bigger than the screen
   win = new BrowserWindow({
-    width: 1280, height: 820, minWidth: 400, minHeight: 520,
+    width: Math.min(1280, area.width - 80), height: Math.min(820, area.height - 60), minWidth: 400, minHeight: 520,
     title: 'Svirka', icon: path.join(__dirname, 'build', 'icon.png'),
     backgroundColor: '#0a0a0a', autoHideMenuBar: true,
     webPreferences: {
