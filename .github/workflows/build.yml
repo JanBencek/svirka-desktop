@@ -5,9 +5,13 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write  # publish the release
+
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
