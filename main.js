@@ -3,6 +3,7 @@
 // and the OS media overlay work (Svirka sets navigator.mediaSession), and Svirka Connect lists it as "Svirka Desktop".
 const { app, BrowserWindow, Menu, Tray, nativeImage, shell } = require('electron')
 const fs = require('node:fs')
+const os = require('node:os')
 const path = require('node:path')
 
 const HOME = 'https://music.bencit.com/'
@@ -21,6 +22,32 @@ let settings = { closeToTray: true, trayHintShown: false }
 try { settings = { ...settings, ...JSON.parse(fs.readFileSync(settingsFile, 'utf8')) } } catch {}
 const save = () => fs.writeFileSync(settingsFile, JSON.stringify(settings))
 
+// Windows 10 never rounds window corners (11 does it itself). There the window loses the Windows border, keeps the
+// Windows buttons over a thin draggable strip, and is cut to rounded corners. Elsewhere: the normal window.
+const ROUND = (process.platform === 'win32' && Number(os.release().split('.')[2]) < 22000) || process.env.SVIRKA_ROUND === '1'  // env: to test elsewhere
+const RADIUS = 10, BAR = 32
+const BAR_CSS = `
+  html { padding-top: ${BAR}px !important; box-sizing: border-box; height: 100%; overflow: hidden; }
+  body { height: 100%; min-height: 0 !important; overflow: auto; }
+  .h-dvh { height: calc(100dvh - ${BAR}px) !important; }
+  html::before { content: 'Svirka'; position: fixed; inset: 0 0 auto 0; height: ${BAR}px; z-index: 2147483647;
+    display: flex; align-items: center; padding-left: 14px; font: 600 12px system-ui, sans-serif;
+    color: color-mix(in srgb, currentColor 60%, transparent); -webkit-app-region: drag; }`
+
+// The window's outline: full rows in the middle, rows inset along a circle at the four corners (Windows draws no
+// anti-aliasing here, so a 10 px radius keeps the steps small). Square when maximised, like every Windows window.
+function shape() {
+  const [w, h] = win.getSize()
+  if (win.isMaximized() || win.isFullScreen()) return win.setShape([{ x: 0, y: 0, width: w, height: h }])
+  const rects = [{ x: 0, y: RADIUS, width: w, height: h - 2 * RADIUS }]
+  for (let i = 0; i < RADIUS; i++) {
+    const dy = RADIUS - i - 0.5
+    const inset = Math.round(RADIUS - Math.sqrt(RADIUS * RADIUS - dy * dy))
+    rects.push({ x: inset, y: i, width: w - 2 * inset, height: 1 }, { x: inset, y: h - 1 - i, width: w - 2 * inset, height: 1 })
+  }
+  win.setShape(rects)
+}
+
 let win, tray
 let quitting = false
 function open() {
@@ -29,7 +56,35 @@ function open() {
     title: 'Svirka', icon: path.join(__dirname, 'build', 'icon.png'),
     backgroundColor: '#0a0a0a', autoHideMenuBar: true,
     webPreferences: { backgroundThrottling: false },  // keep the queue moving while minimised
+    ...(ROUND && { titleBarStyle: 'hidden', titleBarOverlay: { color: '#0a0a0a', symbolColor: '#fafafa', height: BAR } }),
   })
+  if (ROUND) {
+    for (const e of ['resize', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen']) win.on(e, shape)
+    shape()
+    // Every page gets the strip; it reports its background so the Windows buttons match it (light/dark, any theme)
+    win.webContents.on('dom-ready', () => {
+      win.webContents.insertCSS(BAR_CSS)
+      win.webContents.executeJavaScript(`{
+        const bg = () => [document.body, document.documentElement].map((el) => el && getComputedStyle(el).backgroundColor)
+          .find((c) => c && !/^rgba\\(.*, 0\\)$|transparent/.test(c)) || 'rgb(255, 255, 255)'
+        const ctx = document.createElement('canvas').getContext('2d', { willReadFrequently: true })
+        const toHex = (c) => { ctx.clearRect(0, 0, 1, 1); ctx.fillStyle = c; ctx.fillRect(0, 0, 1, 1)  // any CSS colour (oklch too) → #rrggbb
+          return '#' + [...ctx.getImageData(0, 0, 1, 1).data.slice(0, 3)].map((n) => n.toString(16).padStart(2, '0')).join('') }
+        const report = () => console.log('svirka-bar:' + toHex(bg()))
+        report()
+        new MutationObserver(report).observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-palette', 'style'] })
+      }`).catch(() => {})
+    })
+    win.webContents.on('console-message', (e, details) => {
+      const message = details?.message ?? e.message ?? ''
+      if (!message.startsWith('svirka-bar:')) return
+      const color = message.slice(11)
+      if (!/^#[0-9a-f]{6}$/.test(color)) return
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16))
+      const symbolColor = 0.299 * r + 0.587 * g + 0.114 * b > 140 ? '#18181b' : '#fafafa'  // dark buttons on a light page
+      win.setTitleBarOverlay({ color, symbolColor, height: BAR })
+    })
+  }
   // Svirka names this device "Svirka Desktop (…)" in its device list when it sees this
   win.webContents.setUserAgent(`${win.webContents.getUserAgent()} SvirkaDesktop/${app.getVersion()}`)
   win.webContents.setWindowOpenHandler(({ url }) => {
