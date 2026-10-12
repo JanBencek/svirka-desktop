@@ -1,0 +1,33 @@
+name: Build
+
+# Every push: Windows installer + Linux AppImage as run artifacts. A v* tag also publishes them as a GitHub Release.
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run dist
+      - uses: actions/upload-artifact@v6
+        with:
+          name: svirka-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.AppImage
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.exe
+            dist/*.AppImage
