@@ -1,7 +1,7 @@
 // Svirka for the desktop: the Svirka web app (music.bencit.com) in its own window. Everything Svirka does lives
 // there, so the app never needs an update for a new feature. What the window adds: the login is kept, the media keys
 // and the OS media overlay work (Svirka sets navigator.mediaSession), and Svirka Connect lists it as "Svirka Desktop".
-const { app, BrowserWindow, Menu, Tray, nativeImage, shell } = require('electron')
+const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell } = require('electron')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
@@ -22,17 +22,11 @@ let settings = { closeToTray: true, trayHintShown: false }
 try { settings = { ...settings, ...JSON.parse(fs.readFileSync(settingsFile, 'utf8')) } } catch {}
 const save = () => fs.writeFileSync(settingsFile, JSON.stringify(settings))
 
-// Windows 10 never rounds window corners (11 does it itself). There the window loses the Windows border, keeps the
-// Windows buttons over a thin draggable strip, and is cut to rounded corners. Elsewhere: the normal window.
+// Windows 10 never rounds window corners (11 does it itself). There the window has no Windows frame at all (a frame
+// left in place paints a grey border once the window is cut to a shape), preload.js draws a title strip with
+// Windows-style buttons, and the window is cut to rounded corners. Elsewhere: the normal window.
 const ROUND = (process.platform === 'win32' && Number(os.release().split('.')[2]) < 22000) || process.env.SVIRKA_ROUND === '1'  // env: to test elsewhere
-const RADIUS = 10, BAR = 32
-const BAR_CSS = `
-  html { padding-top: ${BAR}px !important; box-sizing: border-box; height: 100%; overflow: hidden; }
-  body { height: 100%; min-height: 0 !important; overflow: auto; }
-  .h-dvh { height: calc(100dvh - ${BAR}px) !important; }
-  html::before { content: 'Svirka'; position: fixed; inset: 0 0 auto 0; height: ${BAR}px; z-index: 2147483647;
-    display: flex; align-items: center; padding-left: 14px; font: 600 12px system-ui, sans-serif;
-    color: color-mix(in srgb, currentColor 60%, transparent); -webkit-app-region: drag; }`
+const RADIUS = 10
 
 // The window's outline: full rows in the middle, rows inset along a circle at the four corners (Windows draws no
 // anti-aliasing here, so a 10 px radius keeps the steps small). Square when maximised, like every Windows window.
@@ -55,35 +49,20 @@ function open() {
     width: 1280, height: 820, minWidth: 400, minHeight: 520,
     title: 'Svirka', icon: path.join(__dirname, 'build', 'icon.png'),
     backgroundColor: '#0a0a0a', autoHideMenuBar: true,
-    webPreferences: { backgroundThrottling: false },  // keep the queue moving while minimised
-    ...(ROUND && { titleBarStyle: 'hidden', titleBarOverlay: { color: '#0a0a0a', symbolColor: '#fafafa', height: BAR } }),
+    webPreferences: {
+      backgroundThrottling: false,  // keep the queue moving while minimised
+      ...(ROUND && { preload: path.join(__dirname, 'preload.js'), additionalArguments: ['--svirka-titlebar'] }),
+    },
+    ...(ROUND && { frame: false }),
   })
   if (ROUND) {
+    win.webContents.on('preload-error', (_e, _p, err) => console.error('preload', err))
     for (const e of ['resize', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen']) win.on(e, shape)
     shape()
-    // Every page gets the strip; it reports its background so the Windows buttons match it (light/dark, any theme)
-    win.webContents.on('dom-ready', () => {
-      win.webContents.insertCSS(BAR_CSS)
-      win.webContents.executeJavaScript(`{
-        const bg = () => [document.body, document.documentElement].map((el) => el && getComputedStyle(el).backgroundColor)
-          .find((c) => c && !/^rgba\\(.*, 0\\)$|transparent/.test(c)) || 'rgb(255, 255, 255)'
-        const ctx = document.createElement('canvas').getContext('2d', { willReadFrequently: true })
-        const toHex = (c) => { ctx.clearRect(0, 0, 1, 1); ctx.fillStyle = c; ctx.fillRect(0, 0, 1, 1)  // any CSS colour (oklch too) → #rrggbb
-          return '#' + [...ctx.getImageData(0, 0, 1, 1).data.slice(0, 3)].map((n) => n.toString(16).padStart(2, '0')).join('') }
-        const report = () => console.log('svirka-bar:' + toHex(bg()))
-        report()
-        new MutationObserver(report).observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-palette', 'style'] })
-      }`).catch(() => {})
-    })
-    win.webContents.on('console-message', (e, details) => {
-      const message = details?.message ?? e.message ?? ''
-      if (!message.startsWith('svirka-bar:')) return
-      const color = message.slice(11)
-      if (!/^#[0-9a-f]{6}$/.test(color)) return
-      const [r, g, b] = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16))
-      const symbolColor = 0.299 * r + 0.587 * g + 0.114 * b > 140 ? '#18181b' : '#fafafa'  // dark buttons on a light page
-      win.setTitleBarOverlay({ color, symbolColor, height: BAR })
-    })
+    const sendMax = () => win.webContents.send('svirka-maximized', win.isMaximized())
+    win.on('maximize', sendMax)
+    win.on('unmaximize', sendMax)
+    win.webContents.on('did-finish-load', sendMax)
   }
   // Svirka names this device "Svirka Desktop (…)" in its device list when it sees this
   win.webContents.setUserAgent(`${win.webContents.getUserAgent()} SvirkaDesktop/${app.getVersion()}`)
@@ -138,6 +117,13 @@ function makeTray() {
   tray.setContextMenu(menu())
   tray.on('click', () => (win.isVisible() && win.isFocused() ? win.hide() : show()))
 }
+
+// The title strip's buttons (preload.js); close goes through the close-to-tray handler like any close
+ipcMain.on('svirka-window', (_e, action) => {
+  if (action === 'minimize') win.minimize()
+  else if (action === 'maximize') win.isMaximized() ? win.unmaximize() : win.maximize()
+  else if (action === 'close') win.close()
+})
 
 app.on('second-instance', () => win && show())  // starting Svirka again brings the hidden window back
 app.on('before-quit', () => { quitting = true })
