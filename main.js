@@ -22,11 +22,29 @@ let settings = { closeToTray: true, trayHintShown: false }
 try { settings = { ...settings, ...JSON.parse(fs.readFileSync(settingsFile, 'utf8')) } } catch {}
 const save = () => fs.writeFileSync(settingsFile, JSON.stringify(settings))
 
-// Windows 10 never rounds window corners (11 does it itself). Cutting a framed window to a shape doesn't work there
-// (with Windows' resize frame kept it paints a grey border, without it the shape is ignored), so the window is
-// transparent instead: preload.js rounds the page's own corners, draws the title strip with Windows-style buttons and
-// adds resize edges (Windows can't resize a transparent window itself). Elsewhere: the normal window.
+// Windows 10 never rounds window corners (11 does it itself). There the window keeps Windows' frame (so snapping,
+// Win+arrows, double-click-to-maximise and edge resizing stay native) but has no title bar: preload.js draws a strip with
+// Windows-style buttons, and the window is cut to rounded corners. Elsewhere: the normal window.
 const ROUND = (process.platform === 'win32' && Number(os.release().split('.')[2]) < 22000) || process.env.SVIRKA_ROUND === '1'  // env: to test elsewhere
+const RADIUS = 10
+// A frameless window with Windows' frame is wider than its page by the invisible resize border on the left, right and
+// bottom (8 px at any scaling). The shape is measured from the window's outer edge, so it starts that far in, or the
+// border shows up grey on the left and the right edge of the page is cut off.
+const BORDER = process.platform === 'win32' ? 8 : 0
+
+// The page's outline: full rows in the middle, rows inset along a circle at the four corners. Maximised: no shape.
+function shape() {
+  if (win.isMaximized() || win.isFullScreen()) return win.setShape([])
+  const [w, h] = win.getSize()
+  const rects = [{ x: BORDER, y: RADIUS, width: w, height: h - 2 * RADIUS }]
+  for (let i = 0; i < RADIUS; i++) {
+    const dy = RADIUS - i - 0.5
+    const inset = Math.round(RADIUS - Math.sqrt(RADIUS * RADIUS - dy * dy))
+    rects.push({ x: BORDER + inset, y: i, width: w - 2 * inset, height: 1 },
+      { x: BORDER + inset, y: h - 1 - i, width: w - 2 * inset, height: 1 })
+  }
+  win.setShape(rects)
+}
 
 let win, tray
 let quitting = false
@@ -41,10 +59,14 @@ function open() {
       backgroundThrottling: false,  // keep the queue moving while minimised
       ...(ROUND && { preload: path.join(__dirname, 'preload.js'), additionalArguments: ['--svirka-titlebar'] }),
     },
-    ...(ROUND && { frame: false, transparent: true, backgroundColor: '#00000000', resizable: false }),
+    ...(ROUND && { frame: false }),
   })
   if (ROUND) {
     win.webContents.on('preload-error', (_e, _p, err) => console.error('preload', err))
+    // again once shown: Windows drops a shape set before the window first appears
+    for (const e of ['show', 'resize', 'maximize', 'unmaximize', 'restore', 'enter-full-screen', 'leave-full-screen']) win.on(e, shape)
+    win.webContents.on('did-finish-load', shape)
+    shape()
     const sendMax = () => win.webContents.send('svirka-maximized', win.isMaximized())
     win.on('maximize', sendMax)
     win.on('unmaximize', sendMax)
@@ -109,25 +131,6 @@ ipcMain.on('svirka-window', (_e, action) => {
   if (action === 'minimize') win.minimize()
   else if (action === 'maximize') win.isMaximized() ? win.unmaximize() : win.maximize()
   else if (action === 'close') win.close()
-})
-
-// Resizing from preload.js's edges: from pointer down (edge = 'n', 'se', …) until pointer up (edge = null), the
-// window follows the cursor.
-let resizeTimer
-ipcMain.on('svirka-resize', (_e, edge) => {
-  clearInterval(resizeTimer)
-  if (!edge || win.isMaximized()) return
-  const start = win.getBounds(), from = screen.getCursorScreenPoint()
-  const [minW, minH] = win.getMinimumSize()
-  resizeTimer = setInterval(() => {
-    const p = screen.getCursorScreenPoint(), dx = p.x - from.x, dy = p.y - from.y
-    let { x, y, width, height } = start
-    if (edge.includes('e')) width = Math.max(minW, start.width + dx)
-    if (edge.includes('s')) height = Math.max(minH, start.height + dy)
-    if (edge.includes('w')) { width = Math.max(minW, start.width - dx); x = start.x + start.width - width }
-    if (edge.includes('n')) { height = Math.max(minH, start.height - dy); y = start.y + start.height - height }
-    win.setBounds({ x, y, width, height })
-  }, 16)
 })
 
 app.on('second-instance', () => win && show())  // starting Svirka again brings the hidden window back
