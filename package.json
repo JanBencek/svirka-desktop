@@ -1,7 +1,7 @@
 {
   "name": "svirka-desktop",
   "productName": "Svirka",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Svirka for the desktop: music.bencit.com in its own window, with media keys",
   "author": "Jan Bencek",
   "license": "UNLICENSED",
@@ -18,9 +18,23 @@
   "build": {
     "appId": "com.bencit.svirka.desktop",
     "productName": "Svirka",
-    "files": ["main.js", "preload.js", "build/icon.png"],
-    "win": { "target": "nsis", "icon": "build/icon.png" },
-    "nsis": { "oneClick": true, "shortcutName": "Svirka" },
-    "linux": { "target": "AppImage", "icon": "build/icon.png", "category": "Audio" }
+    "files": [
+      "main.js",
+      "preload.js",
+      "build/icon.png"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "shortcutName": "Svirka"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "build/icon.png",
+      "category": "Audio"
+    }
   }
 }

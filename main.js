@@ -81,7 +81,7 @@ function open() {
   win.webContents.on('will-navigate', (e, url) => {
     if (INSIDE.test(url)) return
     e.preventDefault()
-    shell.openExternal(url)
+    if (!url.startsWith('file:')) shell.openExternal(url)  // a file dropped outside Settings → Upload music: ignore it
   })
   win.webContents.on('did-fail-load', (_e, code, _desc, url, isMainFrame) => {
     if (isMainFrame && code !== -3) setTimeout(() => win.loadURL(HOME), 5000)  // offline: try again (-3 = aborted)
