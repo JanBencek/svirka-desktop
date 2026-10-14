@@ -1,7 +1,7 @@
 {
   "name": "svirka-desktop",
   "productName": "Svirka",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "description": "Svirka for the desktop: music.bencit.com in its own window, with media keys",
   "author": "Jan Bencek",
   "license": "UNLICENSED",
@@ -41,7 +41,15 @@
       "provider": "github",
       "owner": "JanBencek",
       "repo": "svirka-desktop"
-    }
+    },
+    "protocols": [
+      {
+        "name": "Svirka",
+        "schemes": [
+          "svirka"
+        ]
+      }
+    ]
   },
   "dependencies": {
     "electron-updater": "6.8.9"

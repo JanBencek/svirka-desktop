@@ -16,6 +16,15 @@ app.commandLine.appendSwitch('enable-features', 'HardwareMediaKeyHandling,MediaS
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 if (!app.requestSingleInstanceLock()) app.quit()
+
+// Jam links: svirka://jam/<id> (Svirka's /jam/<id> page in a browser hands them here) open that page in this window,
+// which joins straight away. Windows passes the link on the command line, also to the running Svirka (second-instance).
+// ponytail: Windows only; the AppImage isn't installed anywhere a svirka:// handler could point at.
+if (app.isPackaged) app.setAsDefaultProtocolClient('svirka')  // npm start would register electron.exe
+const linkPage = (argv) => {
+  const m = argv.find((a) => a.startsWith('svirka://'))?.match(/^svirka:\/\/jam\/([\w-]+)/)
+  return m && new URL(`jam/${m[1]}?web=1`, HOME).href  // ?web=1: the Jam page, not the try-the-apps page in front
+}
 if (process.platform === 'win32') app.setAppUserModelId('com.bencit.svirka.desktop')  // the update notification shows as Svirka
 
 // Settings: { closeToTray (default on), trayHintShown }
@@ -75,7 +84,7 @@ function open() {
       save()
     }
   })
-  win.loadURL(HOME)
+  win.loadURL(linkPage(process.argv) || HOME)
 }
 
 function show() {
@@ -114,7 +123,12 @@ ipcMain.on('svirka-titlebar', (_e, color, symbolColor, dark) => {
   if (OVERLAY) try { win.setTitleBarOverlay({ color, symbolColor, height: BAR }) } catch {}
 })
 
-app.on('second-instance', () => win && show())  // starting Svirka again brings the hidden window back
+app.on('second-instance', (_e, argv) => {  // starting Svirka again (or a Jam link) brings the hidden window back
+  if (!win) return
+  const page = linkPage(argv)
+  if (page) win.loadURL(page)
+  show()
+})
 app.on('before-quit', () => { quitting = true })
 // Updates from GitHub Releases: checked at start and every 4 hours, downloaded in the background, installed when
 // Svirka quits (the tray's Quit, a restart, shutting down) or straight away from the tray's "Restart to update"
