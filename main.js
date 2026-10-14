@@ -1,9 +1,10 @@
 // Svirka for the desktop: the Svirka web app (music.bencit.com) in its own window. Everything Svirka does lives
 // there, so the app never needs an update for a new feature. What the window adds: the login is kept, the media keys
 // and the OS media overlay work (Svirka sets navigator.mediaSession), and Svirka Connect lists it as "Svirka Desktop".
-const { app, BrowserWindow, Menu, Notification, Tray, ipcMain, nativeImage, screen, shell } = require('electron')
+const { app, BrowserWindow, Menu, Notification, Tray, ipcMain, nativeImage, nativeTheme, screen, shell } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const fs = require('node:fs')
+const os = require('node:os')
 const path = require('node:path')
 
 const HOME = process.env.SVIRKA_URL || 'https://music.bencit.com/'  // env: another page, for the screenshot workflow
@@ -23,10 +24,14 @@ let settings = { closeToTray: true, trayHintShown: false }
 try { settings = { ...settings, ...JSON.parse(fs.readFileSync(settingsFile, 'utf8')) } } catch {}
 const save = () => fs.writeFileSync(settingsFile, JSON.stringify(settings))
 
-// Windows: no title bar, the page runs to the top and Windows draws its own minimise / maximise / close over it
+// Windows 11: no title bar, the page runs to the top and Windows draws its own minimise / maximise / close over it
 // (titleBarOverlay), so snapping, snap layouts, Win+arrows and resizing all stay native. preload.js adds the drag strip
-// and keeps the buttons' colours in step with the page. Linux keeps its normal window.
-const OVERLAY = process.platform === 'win32' || process.env.SVIRKA_OVERLAY === '1'  // env: to test elsewhere
+// and keeps the buttons' colours in step with the page. Windows 10 can't be dragged from that strip, so it keeps
+// Windows' title bar, dark or light like the page (preload.js reports the colours). Linux keeps its normal window.
+const WIN = process.platform === 'win32'
+const OVERLAY = process.env.SVIRKA_OVERLAY  // env 1 / 0: force it on or off, to test elsewhere
+  ? process.env.SVIRKA_OVERLAY === '1'
+  : WIN && Number(os.release().split('.')[2]) >= 22000
 const BAR = 32
 
 let win, tray
@@ -40,11 +45,11 @@ function open() {
     backgroundColor: '#0a0a0a',
     webPreferences: {
       backgroundThrottling: false,  // keep the queue moving while minimised
-      ...(OVERLAY && { preload: path.join(__dirname, 'preload.js'), additionalArguments: ['--svirka-titlebar'] }),
+      ...((OVERLAY || WIN) && { preload: path.join(__dirname, 'preload.js'), additionalArguments: [OVERLAY ? '--svirka-titlebar' : '--svirka-theme'] }),
     },
     ...(OVERLAY && { titleBarStyle: 'hidden', titleBarOverlay: { color: '#0a0a0a', symbolColor: '#ffffff', height: BAR } }),
   })
-  if (OVERLAY) win.webContents.on('preload-error', (_e, _p, err) => console.error('preload', err))
+  if (OVERLAY || WIN) win.webContents.on('preload-error', (_e, _p, err) => console.error('preload', err))
   // Svirka names this device "Svirka Desktop (…)" in its device list when it sees this
   win.webContents.setUserAgent(`${win.webContents.getUserAgent()} SvirkaDesktop/${app.getVersion()}`)
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -102,29 +107,11 @@ function makeTray() {
   tray.on('click', () => (win.isVisible() && win.isFocused() ? win.hide() : show()))
 }
 
-// The page's colours, from preload.js, for the title bar buttons
-ipcMain.on('svirka-titlebar', (_e, color, symbolColor) => {
-  try { win.setTitleBarOverlay({ color, symbolColor, height: BAR }) } catch {}
-})
-
-// Moving the window by hand (preload.js: only when Windows doesn't do it from the strip itself)
-let dragging
-ipcMain.on('svirka-drag', (_e, what) => {
-  clearInterval(dragging)
-  dragging = undefined
-  if (what === 'maximize') return win.isMaximized() ? win.unmaximize() : win.maximize()
-  if (!what) return
-  if (win.isMaximized()) {  // dragged down from maximised: restore under the cursor
-    const c = screen.getCursorScreenPoint()
-    win.unmaximize()
-    win.setPosition(c.x - Math.round(win.getSize()[0] / 2), c.y - BAR / 2)
-  }
-  const start = screen.getCursorScreenPoint()
-  const [x, y] = win.getPosition()
-  dragging = setInterval(() => {
-    const c = screen.getCursorScreenPoint()
-    win.setPosition(x + c.x - start.x, y + c.y - start.y)
-  }, 16)
+// The page's colours, from preload.js: the title bar buttons (Windows 11), dark or light title bar (Windows 10)
+// (only Svirka's own pages say: the login page is always light, and the page's "auto" follows this setting back)
+ipcMain.on('svirka-titlebar', (_e, color, symbolColor, dark) => {
+  if (dark !== null) nativeTheme.themeSource = dark ? 'dark' : 'light'
+  if (OVERLAY) try { win.setTitleBarOverlay({ color, symbolColor, height: BAR }) } catch {}
 })
 
 app.on('second-instance', () => win && show())  // starting Svirka again brings the hidden window back

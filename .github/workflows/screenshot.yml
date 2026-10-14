@@ -2,11 +2,19 @@ name: Windows screenshot
 
 # Manual check of the window on real Windows (title bar overlay, drag strip, snapping): start the app, screenshot the
 # desktop, keep the PNGs as the run's artifact.
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      win10:
+        description: Windows 10's window (Windows' title bar) instead of the title strip
+        type: boolean
+        default: false
 
 jobs:
   screenshot:
     runs-on: windows-latest
+    env:
+      SVIRKA_OVERLAY: ${{ inputs.win10 && '0' || '' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -68,7 +76,7 @@ jobs:
           Shot "snapped"
           # Svirka's dark layout (a copy of its colours, no login needed): the window's edge against the page
           Stop-Process -Name electron -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2
-          Set-Content dark.html '<html class="dark" style="background:#0a0a0a;color:#fafafa;font:14px Segoe UI"><body style="margin:0;background:#0a0a0a"><div class="h-dvh" style="display:flex;flex-direction:column;gap:8px;padding:8px;box-sizing:border-box;height:100vh"><div style="flex:1;display:flex;gap:8px"><div style="width:240px;background:#171717;border-radius:8px"></div><div style="flex:1;background:#171717;border-radius:8px"></div></div><div style="height:88px;background:#171717;border-radius:8px"></div></div></body></html>'
+          Set-Content dark.html '<html class="dark" data-palette="ocean" style="--card:#171717;background:#0a0a0a;color:#fafafa;font:14px Segoe UI"><body style="margin:0;background:#0a0a0a"><div class="h-dvh" style="display:flex;flex-direction:column;gap:8px;padding:8px;box-sizing:border-box;height:100vh"><div style="flex:1;display:flex;gap:8px"><div style="width:240px;background:#171717;border-radius:8px"></div><div style="flex:1;background:#171717;border-radius:8px"></div></div><div style="height:88px;background:#171717;border-radius:8px"></div></div></body></html>'
           $env:SVIRKA_URL = "file:///$($PWD -replace '\\','/')/dark.html"
           Start-Process -FilePath "node_modules\electron\dist\electron.exe" -ArgumentList "." -RedirectStandardOutput out2.txt -RedirectStandardError err2.txt
           Start-Sleep -Seconds 15
