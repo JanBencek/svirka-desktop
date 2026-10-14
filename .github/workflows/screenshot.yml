@@ -39,6 +39,16 @@ jobs:
           [DllImport("user32.dll")] public static extern void keybd_event(byte k, byte s, uint f, System.IntPtr e);
           "@
           function Click { [W.U]::mouse_event(2, 0, 0, 0, [IntPtr]::Zero); [W.U]::mouse_event(4, 0, 0, 0, [IntPtr]::Zero) }
+          # drag the window by the strip: 200 px right, 120 down
+          [W.U]::SetCursorPos(300, 46); Start-Sleep -Milliseconds 300
+          [W.U]::mouse_event(2, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 200
+          foreach ($i in 1..10) { [W.U]::SetCursorPos(300 + 20 * $i, 46 + 12 * $i); Start-Sleep -Milliseconds 60 }
+          [W.U]::mouse_event(4, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Seconds 1
+          Shot "dragged"
+          # and back
+          [W.U]::SetCursorPos(500, 166); [W.U]::mouse_event(2, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 200
+          foreach ($i in 1..10) { [W.U]::SetCursorPos(500 - 20 * $i, 166 - 12 * $i); Start-Sleep -Milliseconds 60 }
+          [W.U]::mouse_event(4, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Seconds 1
           [W.U]::SetCursorPos(982, 688); Start-Sleep -Milliseconds 300
           [W.U]::mouse_event(2, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 200
           foreach ($i in 1..10) { [W.U]::SetCursorPos(982 - 15 * $i, 688 - 10 * $i); Start-Sleep -Milliseconds 60 }
@@ -56,6 +66,13 @@ jobs:
           [W.U]::keybd_event(0x1B, 0, 0, [IntPtr]::Zero); [W.U]::keybd_event(0x1B, 0, 2, [IntPtr]::Zero)  # close snap assist
           Start-Sleep -Seconds 1
           Shot "snapped"
+          # Svirka's dark layout (a copy of its colours, no login needed): the window's edge against the page
+          Stop-Process -Name electron -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2
+          Set-Content dark.html '<html class="dark" style="background:#0a0a0a;color:#fafafa;font:14px Segoe UI"><body style="margin:0;background:#0a0a0a"><div class="h-dvh" style="display:flex;flex-direction:column;gap:8px;padding:8px;box-sizing:border-box;height:100vh"><div style="flex:1;display:flex;gap:8px"><div style="width:240px;background:#171717;border-radius:8px"></div><div style="flex:1;background:#171717;border-radius:8px"></div></div><div style="height:88px;background:#171717;border-radius:8px"></div></div></body></html>'
+          $env:SVIRKA_URL = "file:///$($PWD -replace '\\','/')/dark.html"
+          Start-Process -FilePath "node_modules\electron\dist\electron.exe" -ArgumentList "." -RedirectStandardOutput out2.txt -RedirectStandardError err2.txt
+          Start-Sleep -Seconds 15
+          Shot "dark"
           Get-Content out.txt -Tail 20
           Get-Content err.txt -Tail 10
       - uses: actions/upload-artifact@v6

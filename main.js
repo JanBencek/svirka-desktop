@@ -5,7 +5,7 @@ const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, screen, shell } = 
 const fs = require('node:fs')
 const path = require('node:path')
 
-const HOME = 'https://music.bencit.com/'
+const HOME = process.env.SVIRKA_URL || 'https://music.bencit.com/'  // env: another page, for the screenshot workflow
 const INSIDE = /^https:\/\/(music|auth)\.bencit\.com\//  // Svirka and its Authelia login; other links open in the browser
 
 // Media keys / OS media overlay from the page's Media Session, and playback handed over from another device
