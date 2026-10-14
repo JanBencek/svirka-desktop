@@ -8,6 +8,8 @@ if (process.argv.includes('--svirka-titlebar')) {
     html { padding-top: ${BAR}px !important; box-sizing: border-box; height: 100%; overflow: hidden; }
     body { height: 100%; min-height: 0 !important; overflow: auto; }
     .h-dvh { height: calc(100dvh - ${BAR}px) !important; }
+    /* Svirka (data-palette): strip, gaps and panels one colour, so dark mode has no black frame around grey panels */
+    html[data-palette] body, html[data-palette] .h-dvh { background-color: var(--card) !important; }
     #svirka-titlebar { position: fixed; inset: 0 0 auto 0; height: ${BAR}px; z-index: 2147483647; display: flex;
       align-items: center; padding-left: 14px; font: 600 12px "Segoe UI", system-ui, sans-serif; user-select: none;
       -webkit-app-region: drag; }
@@ -29,6 +31,17 @@ if (process.argv.includes('--svirka-titlebar')) {
     bar.id = 'svirka-titlebar'
     bar.innerHTML = '<span>Svirka</span>'
     document.documentElement.append(bar)
+
+    // Windows normally moves the window from the strip and the page never sees the press. Where it doesn't (seen on
+    // Windows 10), the press reaches the page and the app moves the window itself; a double-click maximises.
+    bar.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || e.detail > 1) return
+      bar.setPointerCapture(e.pointerId)
+      ipcRenderer.send('svirka-drag', true)
+    })
+    bar.addEventListener('pointerup', () => ipcRenderer.send('svirka-drag', false))
+    bar.addEventListener('lostpointercapture', () => ipcRenderer.send('svirka-drag', false))
+    bar.addEventListener('dblclick', () => ipcRenderer.send('svirka-drag', 'maximize'))
 
     // The strip shows the page's background (it sits in the page's top padding); text and buttons take the page's colours
     let last = ''

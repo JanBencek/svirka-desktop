@@ -73,6 +73,18 @@ jobs:
           Start-Process -FilePath "node_modules\electron\dist\electron.exe" -ArgumentList "." -RedirectStandardOutput out2.txt -RedirectStandardError err2.txt
           Start-Sleep -Seconds 15
           Shot "dark"
+          # after navigating to another site (as logging in does: auth.bencit.com -> music.bencit.com), drag again
+          Stop-Process -Name electron -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2
+          Set-Content hop.html '<body style="background:#171717"><script>setTimeout(() => location.href = "https://auth.bencit.com/", 2000)</script></body>'
+          $env:SVIRKA_URL = "file:///$($PWD -replace '\\','/')/hop.html"
+          Start-Process -FilePath "node_modules\electron\dist\electron.exe" -ArgumentList "." -RedirectStandardOutput out3.txt -RedirectStandardError err3.txt
+          Start-Sleep -Seconds 15
+          Shot "navigated"
+          [W.U]::SetCursorPos(300, 46); Start-Sleep -Milliseconds 300
+          [W.U]::mouse_event(2, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 200
+          foreach ($i in 1..10) { [W.U]::SetCursorPos(300 + 20 * $i, 46 + 12 * $i); Start-Sleep -Milliseconds 60 }
+          [W.U]::mouse_event(4, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Seconds 1
+          Shot "navigated-dragged"
           Get-Content out.txt -Tail 20
           Get-Content err.txt -Tail 10
       - uses: actions/upload-artifact@v6

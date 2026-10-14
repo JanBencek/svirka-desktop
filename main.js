@@ -102,6 +102,26 @@ ipcMain.on('svirka-titlebar', (_e, color, symbolColor) => {
   try { win.setTitleBarOverlay({ color, symbolColor, height: BAR }) } catch {}
 })
 
+// Moving the window by hand (preload.js: only when Windows doesn't do it from the strip itself)
+let dragging
+ipcMain.on('svirka-drag', (_e, what) => {
+  clearInterval(dragging)
+  dragging = undefined
+  if (what === 'maximize') return win.isMaximized() ? win.unmaximize() : win.maximize()
+  if (!what) return
+  if (win.isMaximized()) {  // dragged down from maximised: restore under the cursor
+    const c = screen.getCursorScreenPoint()
+    win.unmaximize()
+    win.setPosition(c.x - Math.round(win.getSize()[0] / 2), c.y - BAR / 2)
+  }
+  const start = screen.getCursorScreenPoint()
+  const [x, y] = win.getPosition()
+  dragging = setInterval(() => {
+    const c = screen.getCursorScreenPoint()
+    win.setPosition(x + c.x - start.x, y + c.y - start.y)
+  }, 16)
+})
+
 app.on('second-instance', () => win && show())  // starting Svirka again brings the hidden window back
 app.on('before-quit', () => { quitting = true })
 app.whenReady().then(() => { open(); makeTray() })
