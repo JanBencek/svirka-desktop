@@ -1,6 +1,7 @@
 name: Build
 
-# Every push: Windows installer + Linux AppImage as run artifacts. A v* tag also publishes them as a GitHub Release.
+# Every push: Windows installer + Linux AppImage as run artifacts. A v* tag also publishes them as a GitHub Release,
+# with latest*.yml and the blockmaps the installed apps update from (electron-updater).
 on:
   push:
   workflow_dispatch:
@@ -35,3 +36,5 @@ jobs:
           files: |
             dist/*.exe
             dist/*.AppImage
+            dist/*.blockmap
+            dist/latest*.yml

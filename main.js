@@ -1,7 +1,8 @@
 // Svirka for the desktop: the Svirka web app (music.bencit.com) in its own window. Everything Svirka does lives
 // there, so the app never needs an update for a new feature. What the window adds: the login is kept, the media keys
 // and the OS media overlay work (Svirka sets navigator.mediaSession), and Svirka Connect lists it as "Svirka Desktop".
-const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, screen, shell } = require('electron')
+const { app, BrowserWindow, Menu, Notification, Tray, ipcMain, nativeImage, screen, shell } = require('electron')
+const { autoUpdater } = require('electron-updater')
 const fs = require('node:fs')
 const path = require('node:path')
 
@@ -14,6 +15,7 @@ app.commandLine.appendSwitch('enable-features', 'HardwareMediaKeyHandling,MediaS
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 if (!app.requestSingleInstanceLock()) app.quit()
+if (process.platform === 'win32') app.setAppUserModelId('com.bencit.svirka.desktop')  // the update notification shows as Svirka
 
 // Settings: { closeToTray (default on), trayHintShown }
 const settingsFile = path.join(app.getPath('userData'), 'settings.json')
@@ -80,10 +82,12 @@ function show() {
 // Svirka web listens for this (src/stores/player.tsx), so the buttons work while the window is hidden
 const media = (action) => win.webContents.executeJavaScript(`window.dispatchEvent(new CustomEvent('svirka-media', { detail: '${action}' }))`)
 
+let updateReady = null  // the version downloaded and waiting for a restart
 function makeTray() {
   tray = new Tray(nativeImage.createFromPath(path.join(__dirname, 'build', 'icon.png')).resize({ width: 32, height: 32 }))
   tray.setToolTip(`Svirka ${app.getVersion()}`)
   const menu = () => Menu.buildFromTemplate([
+    ...(updateReady ? [{ label: `Restart to update to ${updateReady}`, click: () => { quitting = true; autoUpdater.quitAndInstall(true, true) } }, { type: 'separator' }] : []),
     { label: 'Show Svirka', click: show },
     { type: 'separator' },
     { label: 'Play / Pause', click: () => media('toggle') },
@@ -94,6 +98,7 @@ function makeTray() {
     { label: 'Quit Svirka', click: () => { quitting = true; app.quit() } },
   ])
   tray.setContextMenu(menu())
+  refreshTray = () => tray.setContextMenu(menu())
   tray.on('click', () => (win.isVisible() && win.isFocused() ? win.hide() : show()))
 }
 
@@ -124,5 +129,21 @@ ipcMain.on('svirka-drag', (_e, what) => {
 
 app.on('second-instance', () => win && show())  // starting Svirka again brings the hidden window back
 app.on('before-quit', () => { quitting = true })
-app.whenReady().then(() => { open(); makeTray() })
+// Updates from GitHub Releases: checked at start and every 4 hours, downloaded in the background, installed when
+// Svirka quits (the tray's Quit, a restart, shutting down) or straight away from the tray's "Restart to update"
+let refreshTray = () => {}
+function updates() {
+  if (!app.isPackaged) return  // npm start
+  autoUpdater.on('update-downloaded', ({ version }) => {
+    updateReady = version
+    refreshTray()
+    new Notification({ title: `Svirka ${version} is ready`, body: 'It installs when Svirka restarts. Right-click the tray icon to restart now.' }).show()
+  })
+  autoUpdater.on('error', (err) => console.error('update', err.message))
+  const check = () => autoUpdater.checkForUpdates().catch(() => {})  // offline: next time
+  check()
+  setInterval(check, 4 * 60 * 60 * 1000)
+}
+
+app.whenReady().then(() => { open(); makeTray(); updates() })
 app.on('window-all-closed', () => app.quit())

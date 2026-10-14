@@ -7,4 +7,6 @@ Svirka Connect ("Svirka Desktop"), so playback moves between it, the phone and b
 - Run from source: `npm install && npm start`
 - Build: `npm run dist` → `dist/` (Windows installer needs Windows or CI; the AppImage builds on Linux)
 - Release: bump `version` in package.json, then `git tag vX.Y.Z && git push --tags`; GitHub Actions attaches
-  `Svirka Setup X.Y.Z.exe` and `Svirka-X.Y.Z.AppImage` to the release.
+  `Svirka-Setup-X.Y.Z.exe` and `Svirka-X.Y.Z.AppImage` to the release.
+- Updates: installed apps check the GitHub releases at start and every 4 hours, download the new version in the
+  background and install it when Svirka restarts (or from the tray's "Restart to update"). The repo is public for this.
