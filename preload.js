@@ -5,7 +5,7 @@ const { ipcRenderer, webFrame } = require('electron')
 if (process.argv.includes('--svirka-titlebar')) {
   const BAR = 32
   const css = `
-    html { padding-top: ${BAR}px !important; box-sizing: border-box; height: 100%; overflow: hidden; }
+    html { padding-top: ${BAR}px !important; box-sizing: border-box; height: 100%; overflow: clip !important; }  /* clip: never scrolled, not even by focus or a resize */
     body { height: 100%; min-height: 0 !important; overflow: auto; }
     .h-dvh { height: calc(100dvh - ${BAR}px) !important; }
     #svirka-titlebar { position: fixed; inset: 0 0 auto 0; height: ${BAR}px; z-index: 2147483647; display: flex;
