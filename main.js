@@ -3,7 +3,6 @@
 // and the OS media overlay work (Svirka sets navigator.mediaSession), and Svirka Connect lists it as "Svirka Desktop".
 const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, screen, shell } = require('electron')
 const fs = require('node:fs')
-const os = require('node:os')
 const path = require('node:path')
 
 const HOME = 'https://music.bencit.com/'
@@ -22,29 +21,11 @@ let settings = { closeToTray: true, trayHintShown: false }
 try { settings = { ...settings, ...JSON.parse(fs.readFileSync(settingsFile, 'utf8')) } } catch {}
 const save = () => fs.writeFileSync(settingsFile, JSON.stringify(settings))
 
-// Windows 10 never rounds window corners (11 does it itself). There the window keeps Windows' frame (so snapping,
-// Win+arrows, double-click-to-maximise and edge resizing stay native) but has no title bar: preload.js draws a strip with
-// Windows-style buttons, and the window is cut to rounded corners. Elsewhere: the normal window.
-const ROUND = (process.platform === 'win32' && Number(os.release().split('.')[2]) < 22000) || process.env.SVIRKA_ROUND === '1'  // env: to test elsewhere
-const RADIUS = 10
-// A frameless window with Windows' frame is wider than its page by the invisible resize border on the left, right and
-// bottom (8 px at any scaling). The shape is measured from the window's outer edge, so it starts that far in, or the
-// border shows up grey on the left and the right edge of the page is cut off.
-const BORDER = process.platform === 'win32' ? 8 : 0
-
-// The page's outline: full rows in the middle, rows inset along a circle at the four corners. Maximised: no shape.
-function shape() {
-  if (win.isMaximized() || win.isFullScreen()) return win.setShape([])
-  const [w, h] = win.getSize()
-  const rects = [{ x: BORDER, y: RADIUS, width: w, height: h - 2 * RADIUS }]
-  for (let i = 0; i < RADIUS; i++) {
-    const dy = RADIUS - i - 0.5
-    const inset = Math.round(RADIUS - Math.sqrt(RADIUS * RADIUS - dy * dy))
-    rects.push({ x: BORDER + inset, y: i, width: w - 2 * inset, height: 1 },
-      { x: BORDER + inset, y: h - 1 - i, width: w - 2 * inset, height: 1 })
-  }
-  win.setShape(rects)
-}
+// Windows: no title bar, the page runs to the top and Windows draws its own minimise / maximise / close over it
+// (titleBarOverlay), so snapping, snap layouts, Win+arrows and resizing all stay native. preload.js adds the drag strip
+// and keeps the buttons' colours in step with the page. Linux keeps its normal window.
+const OVERLAY = process.platform === 'win32' || process.env.SVIRKA_OVERLAY === '1'  // env: to test elsewhere
+const BAR = 32
 
 let win, tray
 let quitting = false
@@ -57,21 +38,11 @@ function open() {
     backgroundColor: '#0a0a0a',
     webPreferences: {
       backgroundThrottling: false,  // keep the queue moving while minimised
-      ...(ROUND && { preload: path.join(__dirname, 'preload.js'), additionalArguments: ['--svirka-titlebar'] }),
+      ...(OVERLAY && { preload: path.join(__dirname, 'preload.js'), additionalArguments: ['--svirka-titlebar'] }),
     },
-    ...(ROUND && { frame: false }),
+    ...(OVERLAY && { titleBarStyle: 'hidden', titleBarOverlay: { color: '#0a0a0a', symbolColor: '#ffffff', height: BAR } }),
   })
-  if (ROUND) {
-    win.webContents.on('preload-error', (_e, _p, err) => console.error('preload', err))
-    // again once shown: Windows drops a shape set before the window first appears
-    for (const e of ['show', 'resize', 'maximize', 'unmaximize', 'restore', 'enter-full-screen', 'leave-full-screen']) win.on(e, shape)
-    win.webContents.on('did-finish-load', shape)
-    shape()
-    const sendMax = () => win.webContents.send('svirka-maximized', win.isMaximized())
-    win.on('maximize', sendMax)
-    win.on('unmaximize', sendMax)
-    win.webContents.on('did-finish-load', sendMax)
-  }
+  if (OVERLAY) win.webContents.on('preload-error', (_e, _p, err) => console.error('preload', err))
   // Svirka names this device "Svirka Desktop (…)" in its device list when it sees this
   win.webContents.setUserAgent(`${win.webContents.getUserAgent()} SvirkaDesktop/${app.getVersion()}`)
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -126,11 +97,9 @@ function makeTray() {
   tray.on('click', () => (win.isVisible() && win.isFocused() ? win.hide() : show()))
 }
 
-// The title strip's buttons (preload.js); close goes through the close-to-tray handler like any close
-ipcMain.on('svirka-window', (_e, action) => {
-  if (action === 'minimize') win.minimize()
-  else if (action === 'maximize') win.isMaximized() ? win.unmaximize() : win.maximize()
-  else if (action === 'close') win.close()
+// The page's colours, from preload.js, for the title bar buttons
+ipcMain.on('svirka-titlebar', (_e, color, symbolColor) => {
+  try { win.setTitleBarOverlay({ color, symbolColor, height: BAR }) } catch {}
 })
 
 app.on('second-instance', () => win && show())  // starting Svirka again brings the hidden window back
