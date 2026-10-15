@@ -49,6 +49,11 @@ if (STRIP || process.argv.includes('--svirka-theme')) {
       last = key
     }
     paint()
-    new MutationObserver(paint).observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-palette', 'style'] })
+    // React clears <html> of nodes it doesn't own when it re-renders the whole page (after a hydration error): put the
+    // strip back, or the window has nothing to drag it by
+    new MutationObserver(() => {
+      if (bar && !bar.isConnected) document.documentElement.append(bar)
+      paint()
+    }).observe(document.documentElement, { childList: true, attributes: true, attributeFilter: ['class', 'data-palette', 'style'] })
   })
 }
